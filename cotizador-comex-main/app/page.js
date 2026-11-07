@@ -1,0 +1,579 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+
+export default function Cotizador() {
+  // Datos del Cliente y Mercadería (Inician vacíos)
+  const [clientName, setClientName] = useState('');
+  const [clientPhone, setClientPhone] = useState('');
+  const [productDesc, setProductDesc] = useState('');
+  const [hscode, setHscode] = useState('');
+  const [incoterm, setIncoterm] = useState('FOB');
+  const [goodsValue, setGoodsValue] = useState('');
+  
+  // Medidas y Pesos (Inician vacíos)
+  const [weightKg, setWeightKg] = useState('');
+  const [cbm, setCbm] = useState('');
+
+  // TIPO DE CAMBIO (NUEVA LÓGICA EN VIVO)
+  const [exchangeRate, setExchangeRate] = useState('');
+  const [useLiveRate, setUseLiveRate] = useState(false);
+  const [liveRateType, setLiveRateType] = useState('blue');
+  const [isLoadingRate, setIsLoadingRate] = useState(false);
+
+  // Efecto para buscar el dólar en tiempo real
+  useEffect(() => {
+    if (!useLiveRate) return;
+
+    const fetchRate = async () => {
+      setIsLoadingRate(true);
+      try {
+        const res = await fetch(`https://dolarapi.com/v1/dolares/${liveRateType}`);
+        if (!res.ok) throw new Error('Error en la API de cotización');
+        const data = await res.json();
+        setExchangeRate(data.venta); // Usamos siempre el valor de Venta
+      } catch (error) {
+        console.error("Error obteniendo dólar:", error);
+        alert("⚠️ No se pudo conectar al servidor de cotizaciones. Podés ingresarlo manualmente.");
+        setUseLiveRate(false);
+      } finally {
+        setIsLoadingRate(false);
+      }
+    };
+
+    fetchRate();
+  }, [useLiveRate, liveRateType]);
+
+  // Modalidad y Tarifas
+  const [shippingMode, setShippingMode] = useState('maritimo_compartido');
+  const [unitFreightRate, setUnitFreightRate] = useState(8.5);
+
+  // Toggle de Visualización y Cómputo del Valor de Mercadería
+  const [enableGoodsValue, setEnableGoodsValue] = useState(true);
+
+  // Toggle y Alícuotas Impositivas (Mantenemos los porcentajes oficiales por defecto)
+  const [enableDdi, setEnableDdi] = useState(true);
+  const [ddiRate, setDdiRate] = useState(16);
+
+  const [enableStat, setEnableStat] = useState(true);
+  const [statRate, setStatRate] = useState(3);
+
+  const [enableIva, setEnableIva] = useState(true);
+  const [ivaRate, setIvaRate] = useState(21);
+
+  const [enableIvaAdic, setEnableIvaAdic] = useState(true);
+  const [ivaAdicRate, setIvaAdicRate] = useState(20);
+
+  const [enableGanancias, setEnableGanancias] = useState(true);
+  const [gananciasRate, setGananciasRate] = useState(6);
+
+  const [enableIibb, setEnableIibb] = useState(true);
+  const [iibbRate, setIibbRate] = useState(2.5);
+
+  // Gastos Locales y Honorarios (Inician vacíos)
+  const [enableLocalExpenses, setEnableLocalExpenses] = useState(true);
+  const [localExpenses, setLocalExpenses] = useState('');
+  const [enableInsurance, setEnableInsurance] = useState(true);
+  const [serviceFee, setServiceFee] = useState('');
+
+  const [copiado, setCopiado] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+
+  // Cambiar tarifas según modalidad
+  const handleModeChange = (mode) => {
+    setShippingMode(mode);
+    switch (mode) {
+      case 'maritimo_compartido': setUnitFreightRate(8.5); break;
+      case 'maritimo_cbm': setUnitFreightRate(350); break;
+      case 'courier_aereo': setUnitFreightRate(16.5); break;
+      case 'all_in_aereo': setUnitFreightRate(48); break;
+    }
+  };
+
+  // --- CAPA DE SEGURIDAD MATEMÁTICA ---
+  const valGoods = Number(goodsValue) || 0;
+  const valWeight = Number(weightKg) || 0;
+  const valCbm = Number(cbm) || 0;
+  const valFreightRate = Number(unitFreightRate) || 0;
+  const valLocalExpenses = Number(localExpenses) || 0;
+  const valServiceFee = Number(serviceFee) || 0;
+  const valExchangeRate = Number(exchangeRate) || 0;
+
+  // Cálculos de flete
+  const volumetricWeight = Number((valCbm * 167).toFixed(2));
+  const chargeableWeight = Math.max(valWeight, volumetricWeight);
+
+  let internationalFreight = 0;
+  if (incoterm === 'CIF' || incoterm === 'DDP') {
+    internationalFreight = 0;
+  } else if (shippingMode === 'maritimo_compartido') {
+    internationalFreight = chargeableWeight * valFreightRate;
+  } else if (shippingMode === 'maritimo_cbm') {
+    internationalFreight = valCbm * valFreightRate;
+  } else if (shippingMode === 'courier_aereo' || shippingMode === 'all_in_aereo') {
+    internationalFreight = Math.max(valWeight, volumetricWeight) * valFreightRate;
+  }
+
+  // Seguro
+  const insurance = (enableInsurance && incoterm !== 'CIF' && incoterm !== 'DDP')
+    ? Number(((valGoods + internationalFreight) * 0.01).toFixed(2))
+    : 0;
+
+  // Base legal para liquidación en aduana
+  const legalCifValue = incoterm === 'CIF' || incoterm === 'DDP'
+    ? valGoods
+    : valGoods + internationalFreight + insurance;
+
+  // Base mostrada en la cotización
+  const displayedBaseValue = enableGoodsValue
+    ? legalCifValue
+    : (internationalFreight + insurance);
+
+  const isAllInOrDdp = shippingMode === 'all_in_aereo' || incoterm === 'DDP';
+
+  // Cascada Impositiva
+  const ddiAmount = (!isAllInOrDdp && enableDdi) ? Number((legalCifValue * (ddiRate / 100)).toFixed(2)) : 0;
+  const statAmount = (!isAllInOrDdp && enableStat) ? Number((legalCifValue * (statRate / 100)).toFixed(2)) : 0;
+  
+  const taxBase = !isAllInOrDdp ? (legalCifValue + ddiAmount + statAmount) : 0;
+
+  const ivaAmount = (!isAllInOrDdp && enableIva) ? Number((taxBase * (ivaRate / 100)).toFixed(2)) : 0;
+  const ivaAdicAmount = (!isAllInOrDdp && enableIvaAdic) ? Number((taxBase * (ivaAdicRate / 100)).toFixed(2)) : 0;
+  const gananciasAmount = (!isAllInOrDdp && enableGanancias) ? Number((taxBase * (gananciasRate / 100)).toFixed(2)) : 0;
+  const iibbAmount = (!isAllInOrDdp && enableIibb) ? Number((taxBase * (iibbRate / 100)).toFixed(2)) : 0;
+
+  const totalTaxes = ddiAmount + statAmount + ivaAmount + ivaAdicAmount + gananciasAmount + iibbAmount;
+  const activeLocalExpenses = (!isAllInOrDdp && enableLocalExpenses) ? valLocalExpenses : 0;
+
+  // Total final USD y ARS
+  const grandTotal = (enableGoodsValue ? valGoods : 0) + internationalFreight + insurance + totalTaxes + activeLocalExpenses + valServiceFee;
+  const grandTotalARS = grandTotal * valExchangeRate;
+
+  // Etiqueta dinámica para saber qué dólar se usó
+  const exchangeRateLabel = useLiveRate 
+    ? `T.C. ${liveRateType.charAt(0).toUpperCase() + liveRateType.slice(1)}` 
+    : 'T.C. Manual';
+
+  // Formato para WhatsApp
+  const generarTextoResumen = () => {
+    return `*COTIZACIÓN DE IMPORTACIÓN - DE CHINA AL MUNDO*
+----------------------------------------
+👤 *Cliente:* ${clientName || 'Consumidor Final'}
+📦 *Producto:* ${productDesc || 'Mercadería General'}
+📑 *Posición Arancelaria:* ${hscode || 'A clasificar'}
+🌐 *Término:* ${incoterm}
+🚢 *Modalidad:* ${
+      shippingMode === 'maritimo_compartido' ? 'Carga Compartida Marítimo (LCL)' :
+      shippingMode === 'maritimo_cbm' ? 'Carga Marítima por CBM' :
+      shippingMode === 'courier_aereo' ? 'Courier Aéreo Express' : 'All In Aéreo'
+    }
+----------------------------------------
+${enableGoodsValue ? `💵 *Valor Mercadería (${incoterm}):*$${valGoods.toFixed(2)} USD\n` : ''}✈️ *Flete Internacional:* $${internationalFreight.toFixed(2)} USD
+${enableInsurance ? `🛡️ *Seguro Estimado:* $${insurance.toFixed(2)} USD\n` : ''}🏛️ *Impuestos y Aduana:* $${totalTaxes.toFixed(2)} USD
+${activeLocalExpenses > 0 ? `🏢 *Gastos Locales:* $${activeLocalExpenses.toFixed(2)} USD\n` : ''}🤝 *Honorarios DCAM:* $${valServiceFee.toFixed(2)} USD
+----------------------------------------
+💰 *TOTAL USD:* $${grandTotal.toFixed(2)} USD${valExchangeRate > 0 ? `\n🇦🇷 *TOTAL EN PESOS (${exchangeRateLabel} $${valExchangeRate}):*$${grandTotalARS.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})} ARS` : ''}`;
+  };
+
+  const copiarAlPortapapeles = () => {
+    navigator.clipboard.writeText(generarTextoResumen());
+    setCopiado(true);
+    setTimeout(() => setCopiado(false), 2500);
+  };
+
+  const enviarWhatsAppDirecto = async () => {
+    if (!clientPhone) {
+      alert('Por favor ingresá el número de WhatsApp del cliente (ej: 549351...)');
+      return;
+    }
+    setEnviando(true);
+    try {
+      const res = await fetch('/api/send-quote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: clientPhone.replace(/\D/g, ''), message: generarTextoResumen() })
+      });
+      const data = await res.json();
+      if (res.ok) alert('✅ ¡Cotización enviada con éxito desde el bot!');
+      else alert('❌ Error al enviar: ' + (data.error || 'Verificar servidor de WhatsApp'));
+    } catch (error) {
+      alert('❌ Error de conexión al despachar el mensaje.');
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  return (
+    <div style={styles.container}>
+      <style>{`
+        @media print {
+          body { background: #fff !important; padding: 0 !important; }
+          .no-print { display: none !important; }
+          .print-sheet {
+            box-shadow: none !important;
+            border: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100% !important;
+          }
+        }
+      `}</style>
+
+      <div style={styles.panel} className="no-print">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+          <img src="/logo.png" alt="Logo" style={{ height: '36px', objectFit: 'contain' }} />
+          <div>
+            <h2 style={{ margin: 0, color: '#fff', fontSize: '18px' }}>Cotizador Comex - De China al Mundo</h2>
+            <p style={{ margin: 0, color: '#94a3b8', fontSize: '13px' }}>Configuración integral y cotización a medida</p>
+          </div>
+        </div>
+
+        <div style={styles.formGrid}>
+          <div>
+            <label style={styles.label}>Cliente / Razón Social:</label>
+            <input style={styles.input} type="text" value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Ej: Transportes SRL" />
+          </div>
+          <div>
+            <label style={styles.label}>WhatsApp Cliente:</label>
+            <input style={styles.input} type="text" value={clientPhone} onChange={(e) => setClientPhone(e.target.value)} placeholder="Ej: 5493512345678" />
+          </div>
+          <div>
+            <label style={styles.label}>Producto / Descripción:</label>
+            <input style={styles.input} type="text" value={productDesc} onChange={(e) => setProductDesc(e.target.value)} placeholder="Ej: Repuestos de autos" />
+          </div>
+          <div>
+            <label style={styles.label}>Posición Arancelaria:</label>
+            <input style={styles.input} type="text" value={hscode} onChange={(e) => setHscode(e.target.value)} placeholder="Ej: 8708.99.90" />
+          </div>
+          <div>
+            <label style={styles.label}>Condición / Incoterm:</label>
+            <select style={styles.select} value={incoterm} onChange={(e) => setIncoterm(e.target.value)}>
+              <option value="EXW">EXW (En fábrica)</option>
+              <option value="FOB">FOB (Puesto en puerto)</option>
+              <option value="CIF">CIF (Costo, Flete y Seguro)</option>
+              <option value="DDP">DDP (Entregado con impuestos)</option>
+            </select>
+          </div>
+          <div>
+            <label style={styles.label}>Valor Mercadería USD:</label>
+            <input style={styles.input} type="number" value={goodsValue} onChange={(e) => setGoodsValue(e.target.value === '' ? '' : Number(e.target.value))} placeholder="Ej: 1000" />
+          </div>
+          <div>
+            <label style={styles.label}>Peso Real (Kg):</label>
+            <input style={styles.input} type="number" value={weightKg} onChange={(e) => setWeightKg(e.target.value === '' ? '' : Number(e.target.value))} placeholder="Ej: 50" />
+          </div>
+          <div>
+            <label style={styles.label}>Volumen (m³ / CBM):</label>
+            <input style={styles.input} type="number" step="0.01" value={cbm} onChange={(e) => setCbm(e.target.value === '' ? '' : Number(e.target.value))} placeholder="Ej: 0.5" />
+          </div>
+          
+          {/* CONTROL DE DÓLAR EN VIVO Y MANUAL */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+              <label style={{ ...styles.label, color: '#10b981', marginBottom: 0 }}>Cotización Dólar:</label>
+              <label style={{ fontSize: '11px', color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
+                <input 
+                  type="checkbox" 
+                  checked={useLiveRate} 
+                  onChange={(e) => {
+                    setUseLiveRate(e.target.checked);
+                    if (!e.target.checked) setExchangeRate('');
+                  }} 
+                />
+                En vivo
+              </label>
+            </div>
+
+            {useLiveRate ? (
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <select 
+                  style={{ ...styles.select, width: '50%', borderColor: '#10b981', padding: '6px' }} 
+                  value={liveRateType} 
+                  onChange={(e) => setLiveRateType(e.target.value)}
+                >
+                  <option value="oficial">Oficial</option>
+                  <option value="blue">Blue</option>
+                  <option value="cripto">Cripto</option>
+                </select>
+                <input 
+                  style={{ ...styles.input, width: '50%', borderColor: '#10b981', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', fontWeight: 'bold' }} 
+                  type="text" 
+                  value={isLoadingRate ? '⏳...' : exchangeRate} 
+                  readOnly 
+                />
+              </div>
+            ) : (
+              <input 
+                style={{ ...styles.input, borderColor: '#10b981' }} 
+                type="number" 
+                value={exchangeRate} 
+                onChange={(e) => setExchangeRate(e.target.value === '' ? '' : Number(e.target.value))} 
+                placeholder="Ingresar manual (ARS)" 
+              />
+            )}
+          </div>
+        </div>
+
+        <div style={{ marginTop: '16px' }}>
+          <label style={styles.label}>Modalidad de Envío y Tarifa:</label>
+          <div style={styles.modeGrid}>
+            <button type="button" style={shippingMode === 'maritimo_compartido' ? styles.modeBtnActive : styles.modeBtn} onClick={() => handleModeChange('maritimo_compartido')}>
+              🚢 Compartido Marítimo
+              <span style={styles.subtext}>8.5 USD / Peso Vol.</span>
+            </button>
+            <button type="button" style={shippingMode === 'maritimo_cbm' ? styles.modeBtnActive : styles.modeBtn} onClick={() => handleModeChange('maritimo_cbm')}>
+              📦 Marítimo (m³)
+              <span style={styles.subtext}>300 - 400 USD / CBM</span>
+            </button>
+            <button type="button" style={shippingMode === 'courier_aereo' ? styles.modeBtnActive : styles.modeBtn} onClick={() => handleModeChange('courier_aereo')}>
+              ✈️ Courier Aéreo
+              <span style={styles.subtext}>15 - 18 USD / Kg</span>
+            </button>
+            <button type="button" style={shippingMode === 'all_in_aereo' ? styles.modeBtnActive : styles.modeBtn} onClick={() => handleModeChange('all_in_aereo')}>
+              🚀 All In Aéreo
+              <span style={styles.subtext}>45 - 50 USD / Kg</span>
+            </button>
+          </div>
+        </div>
+
+        <div style={{ marginTop: '18px', background: '#0f172a', padding: '14px', borderRadius: '8px', border: '1px solid #334155' }}>
+          <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#f1f5f9', display: 'block', marginBottom: '10px' }}>
+            ⚙️ Ajuste de Impuestos, Gastos y Honorarios:
+          </span>
+
+          <div style={styles.taxGrid}>
+            <div style={styles.taxItem}>
+              <label style={styles.checkboxLabel}>
+                <input type="checkbox" checked={enableGoodsValue} onChange={(e) => setEnableGoodsValue(e.target.checked)} />
+                Mercadería USD:
+              </label>
+              <span style={{ fontSize: '11px', color: '#94a3b8' }}>{enableGoodsValue ? `$${valGoods}` : 'Oculto'}</span>
+            </div>
+
+            <div style={styles.taxItem}>
+              <label style={styles.checkboxLabel}><input type="checkbox" checked={enableDdi} onChange={(e) => setEnableDdi(e.target.checked)} /> DDI (%):</label>
+              <input style={styles.inputSmall} type="number" disabled={!enableDdi} value={ddiRate} onChange={(e) => setDdiRate(e.target.value === '' ? '' : Number(e.target.value))} />
+            </div>
+
+            <div style={styles.taxItem}>
+              <label style={styles.checkboxLabel}><input type="checkbox" checked={enableStat} onChange={(e) => setEnableStat(e.target.checked)} /> Estadística (%):</label>
+              <input style={styles.inputSmall} type="number" disabled={!enableStat} value={statRate} onChange={(e) => setStatRate(e.target.value === '' ? '' : Number(e.target.value))} />
+            </div>
+
+            <div style={styles.taxItem}>
+              <label style={styles.checkboxLabel}><input type="checkbox" checked={enableIva} onChange={(e) => setEnableIva(e.target.checked)} /> IVA (%):</label>
+              <input style={styles.inputSmall} type="number" disabled={!enableIva} value={ivaRate} onChange={(e) => setIvaRate(e.target.value === '' ? '' : Number(e.target.value))} />
+            </div>
+
+            <div style={styles.taxItem}>
+              <label style={styles.checkboxLabel}><input type="checkbox" checked={enableIvaAdic} onChange={(e) => setEnableIvaAdic(e.target.checked)} /> IVA Adic. (%):</label>
+              <input style={styles.inputSmall} type="number" disabled={!enableIvaAdic} value={ivaAdicRate} onChange={(e) => setIvaAdicRate(e.target.value === '' ? '' : Number(e.target.value))} />
+            </div>
+
+            <div style={styles.taxItem}>
+              <label style={styles.checkboxLabel}><input type="checkbox" checked={enableGanancias} onChange={(e) => setEnableGanancias(e.target.checked)} /> Ganancias (%):</label>
+              <input style={styles.inputSmall} type="number" disabled={!enableGanancias} value={gananciasRate} onChange={(e) => setGananciasRate(e.target.value === '' ? '' : Number(e.target.value))} />
+            </div>
+
+            <div style={styles.taxItem}>
+              <label style={styles.checkboxLabel}><input type="checkbox" checked={enableIibb} onChange={(e) => setEnableIibb(e.target.checked)} /> IIBB (%):</label>
+              <input style={styles.inputSmall} type="number" disabled={!enableIibb} value={iibbRate} onChange={(e) => setIibbRate(e.target.value === '' ? '' : Number(e.target.value))} />
+            </div>
+
+            <div style={styles.taxItem}>
+              <label style={styles.checkboxLabel}><input type="checkbox" checked={enableLocalExpenses} onChange={(e) => setEnableLocalExpenses(e.target.checked)} /> Gastos Loc. (USD):</label>
+              <input style={styles.inputSmall} type="number" disabled={!enableLocalExpenses} value={localExpenses} onChange={(e) => setLocalExpenses(e.target.value === '' ? '' : Number(e.target.value))} placeholder="0" />
+            </div>
+
+            <div style={styles.taxItem}>
+              <label style={styles.checkboxLabel}><input type="checkbox" checked={enableInsurance} onChange={(e) => setEnableInsurance(e.target.checked)} /> Seguro (1%):</label>
+              <span style={{ fontSize: '11px', color: '#94a3b8' }}>{enableInsurance ? `$${insurance}` : 'No'}</span>
+            </div>
+
+            <div style={styles.taxItem}>
+              <label style={{ ...styles.checkboxLabel, color: '#fbbf24' }}>Honorarios (USD):</label>
+              <input style={{ ...styles.inputSmall, borderColor: '#fbbf24' }} type="number" value={serviceFee} onChange={(e) => setServiceFee(e.target.value === '' ? '' : Number(e.target.value))} placeholder="0" />
+            </div>
+
+            <div style={styles.taxItem}>
+              <label style={styles.checkboxLabel}>Tarifa Flete (USD):</label>
+              <input style={styles.inputSmall} type="number" step="0.1" value={unitFreightRate} onChange={(e) => setUnitFreightRate(e.target.value === '' ? '' : Number(e.target.value))} />
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+          <button style={styles.printBtn} onClick={() => window.print()}>🖨️ Imprimir / Guardar PDF</button>
+          <button style={{ ...styles.waBtn, opacity: enviando ? 0.7 : 1 }} onClick={enviarWhatsAppDirecto} disabled={enviando}>
+            {enviando ? '⏳ Enviando...' : '🚀 Enviar por WhatsApp'}
+          </button>
+          <button style={styles.copyBtn} onClick={copiarAlPortapapeles}>{copiado ? '✅ Copiado' : '📋 Copiar Resumen'}</button>
+        </div>
+      </div>
+
+      {/* PLANILLA FORMAL EJECUTIVA */}
+      <div style={styles.quoteCard} className="print-sheet">
+        <div style={styles.quoteHeader}>
+          <img src="/logo.png" alt="De China Al Mundo" style={{ maxHeight: '55px', objectFit: 'contain' }} />
+          <div style={{ textAlign: 'right' }}>
+            <h1 style={{ margin: 0, fontSize: '18px', color: '#881337', fontWeight: '900' }}>COTIZACIÓN DE IMPORTACIÓN</h1>
+            <p style={{ margin: '2px 0 0 0', fontSize: '11px', color: '#64748b' }}>
+              Fecha: {new Date().toLocaleDateString('es-AR')} | Ref: DCAM-{Math.floor(1000 + Math.random() * 9000)}
+            </p>
+          </div>
+        </div>
+
+        <hr style={styles.hrDivider} />
+
+        <div style={styles.twoColGrid}>
+          <div>
+            <h3 style={styles.sectionHeading}>DATOS DEL CLIENTE</h3>
+            <p style={styles.dataRow}><strong>Cliente:</strong> {clientName || 'Consumidor Final'}</p>
+            {clientPhone && <p style={styles.dataRow}><strong>Contacto:</strong> +{clientPhone}</p>}
+            <p style={styles.dataRow}><strong>Producto:</strong> {productDesc || 'Mercadería General'}</p>
+            <p style={styles.dataRow}><strong>Posición:</strong> {hscode || 'A clasificar'}</p>
+            <p style={styles.dataRow}><strong>Término de Compra:</strong> {incoterm}</p>
+          </div>
+          <div>
+            <h3 style={styles.sectionHeading}>DETALLE LOGÍSTICO</h3>
+            <p style={styles.dataRow}>
+              <strong>Modalidad:</strong> {
+                shippingMode === 'maritimo_compartido' ? 'Carga Compartida Marítimo' :
+                shippingMode === 'maritimo_cbm' ? 'Carga Marítima por CBM' :
+                shippingMode === 'courier_aereo' ? 'Courier Aéreo Express' : 'All In Aéreo'
+              }
+            </p>
+            <p style={styles.dataRow}><strong>Peso / Vol.:</strong> {valWeight} kg | {valCbm} m³</p>
+            <p style={styles.dataRow}><strong>Peso Facturable:</strong> {chargeableWeight} kg</p>
+          </div>
+        </div>
+
+        <table style={styles.table}>
+          <thead>
+            <tr style={styles.thRow}>
+              <th style={styles.th}>CONCEPTO</th>
+              <th style={styles.thCenter}>BASE / ALÍCUOTA</th>
+              <th style={styles.thRight}>TOTAL (USD)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {enableGoodsValue && (
+              <tr>
+                <td style={styles.td}>Valor Mercadería ({incoterm})</td>
+                <td style={styles.tdCenter}>-</td>
+                <td style={styles.tdRight}>${valGoods.toFixed(2)}</td>
+              </tr>
+            )}
+
+            {internationalFreight > 0 && (
+              <tr>
+                <td style={styles.td}>Flete Internacional</td>
+                <td style={styles.tdCenter}>Tarifa: ${valFreightRate}</td>
+                <td style={styles.tdRight}>${internationalFreight.toFixed(2)}</td>
+              </tr>
+            )}
+
+            {enableInsurance && (
+              <tr>
+                <td style={styles.td}>Seguro Internacional Estimado</td>
+                <td style={styles.tdCenter}>1.00%</td>
+                <td style={styles.tdRight}>${insurance.toFixed(2)}</td>
+              </tr>
+            )}
+
+            <tr style={{ background: '#f8fafc', fontWeight: 'bold' }}>
+              <td style={styles.td}>{enableGoodsValue ? 'VALOR EN ADUANA (BASE TRIBUTARIA)' : 'SUBTOTAL FLETE & SEGURO'}</td>
+              <td style={styles.tdCenter}>{enableGoodsValue ? (incoterm === 'CIF' ? 'Valor CIF' : `${incoterm} + Flete + Seguro`) : 'Flete + Seguro'}</td>
+              <td style={styles.tdRight}>${displayedBaseValue.toFixed(2)}</td>
+            </tr>
+
+            {!isAllInOrDdp ? (
+              <>
+                {enableDdi && <tr><td style={styles.td}>Derechos de Importación (DDI)</td><td style={styles.tdCenter}>{ddiRate}%</td><td style={styles.tdRight}>${ddiAmount.toFixed(2)}</td></tr>}
+                {enableStat && <tr><td style={styles.td}>Tasa de Estadística</td><td style={styles.tdCenter}>{statRate}%</td><td style={styles.tdRight}>${statAmount.toFixed(2)}</td></tr>}
+                {enableIva && <tr><td style={styles.td}>IVA General</td><td style={styles.tdCenter}>{ivaRate}%</td><td style={styles.tdRight}>${ivaAmount.toFixed(2)}</td></tr>}
+                {enableIvaAdic && <tr><td style={styles.td}>IVA Adicional</td><td style={styles.tdCenter}>{ivaAdicRate}%</td><td style={styles.tdRight}>${ivaAdicAmount.toFixed(2)}</td></tr>}
+                {enableGanancias && <tr><td style={styles.td}>Percepción Ganancias</td><td style={styles.tdCenter}>{gananciasRate}%</td><td style={styles.tdRight}>${gananciasAmount.toFixed(2)}</td></tr>}
+                {enableIibb && <tr><td style={styles.td}>Percepción IIBB</td><td style={styles.tdCenter}>{iibbRate}%</td><td style={styles.tdRight}>${iibbAmount.toFixed(2)}</td></tr>}
+                {enableLocalExpenses && <tr><td style={styles.td}>Gastos Locales / Puerto / Despacho</td><td style={styles.tdCenter}>Fijo estimado</td><td style={styles.tdRight}>${valLocalExpenses.toFixed(2)}</td></tr>}
+              </>
+            ) : (
+              <tr><td style={styles.td}>Servicio Integral Aduanero / Impuestos</td><td style={styles.tdCenter}>Incluido en modalidad seleccionada</td><td style={styles.tdRight}>$0.00</td></tr>
+            )}
+
+            <tr>
+              <td style={styles.td}>Honorarios & Gestión DCAM</td>
+              <td style={styles.tdCenter}>Coordinación integral</td>
+              <td style={styles.tdRight}>${valServiceFee.toFixed(2)}</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr style={styles.tfootRow}>
+              <td colSpan={2} style={styles.tdTotalLabel}>
+                {enableGoodsValue ? 'TOTAL ESTIMADO DE LA OPERACIÓN (USD):' : 'TOTAL SERVICIO LOGÍSTICO & IMPUESTOS (USD):'}
+              </td>
+              <td style={styles.tdTotalValue}>${grandTotal.toFixed(2)}</td>
+            </tr>
+            {valExchangeRate > 0 && (
+              <tr style={{ background: '#f1f5f9', borderTop: '1px solid #cbd5e1' }}>
+                <td colSpan={2} style={{ ...styles.tdTotalLabel, color: '#0f172a' }}>
+                  TOTAL EQUIVALENTE EN PESOS ({exchangeRateLabel} ${valExchangeRate}):
+                </td>
+                <td style={{ ...styles.tdTotalValue, color: '#0f172a' }}>
+                  ${grandTotalARS.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ARS
+                </td>
+              </tr>
+            )}
+          </tfoot>
+        </table>
+
+        <div style={styles.notesBox}>
+          <strong>Términos & Condiciones:</strong>
+          <ul style={{ margin: '4px 0 0 0', paddingLeft: '18px', fontSize: '11px', color: '#475569' }}>
+            <li>Cotización válida por 7 días hábiles sujeta a confirmación de bodega.</li>
+            <li>Valores impositivos oficiales según reglamentación aduanera vigente.</li>
+            {valExchangeRate > 0 && <li>La liquidación final en pesos se realizará al tipo de cambio acordado al momento del cierre.</li>}
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const styles = {
+  container: { minHeight: '100vh', background: '#0f172a', padding: '24px', fontFamily: 'sans-serif' },
+  panel: { background: '#1e293b', borderRadius: '12px', padding: '24px', maxWidth: '950px', margin: '0 auto 30px auto', border: '1px solid #334155' },
+  formGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' },
+  taxGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px', alignItems: 'center' },
+  taxItem: { background: '#1e293b', padding: '6px 10px', borderRadius: '6px', border: '1px solid #334155', display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+  checkboxLabel: { fontSize: '11px', fontWeight: 'bold', color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' },
+  label: { display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#cbd5e1', marginBottom: '4px' },
+  input: { width: '100%', boxSizing: 'border-box', padding: '8px 10px', background: '#0f172a', border: '1px solid #475569', borderRadius: '6px', color: '#fff', fontSize: '13px' },
+  inputSmall: { width: '60px', boxSizing: 'border-box', padding: '4px 6px', background: '#0f172a', border: '1px solid #475569', borderRadius: '4px', color: '#fff', fontSize: '12px', textAlign: 'right' },
+  select: { width: '100%', boxSizing: 'border-box', padding: '8px 10px', background: '#0f172a', border: '1px solid #475569', borderRadius: '6px', color: '#fff', fontSize: '13px' },
+  modeGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px' },
+  modeBtn: { background: '#0f172a', border: '1px solid #475569', borderRadius: '8px', padding: '10px', color: '#cbd5e1', cursor: 'pointer', textAlign: 'left' },
+  modeBtnActive: { background: '#881337', border: '1px solid #f43f5e', borderRadius: '8px', padding: '10px', color: '#fff', cursor: 'pointer', textAlign: 'left' },
+  subtext: { display: 'block', fontSize: '10px', color: '#fbbf24', marginTop: '2px' },
+  printBtn: { flex: 1, background: '#b91c1c', color: '#fff', border: 'none', padding: '12px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' },
+  waBtn: { flex: 1.4, background: '#10b981', color: '#fff', border: 'none', padding: '12px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' },
+  copyBtn: { flex: 1, background: '#334155', color: '#fff', border: 'none', padding: '12px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' },
+  quoteCard: { background: '#ffffff', borderRadius: '12px', padding: '30px', maxWidth: '850px', margin: '0 auto', color: '#1e293b' },
+  quoteHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  hrDivider: { border: 'none', borderTop: '2px solid #881337', margin: '14px 0' },
+  twoColGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '16px' },
+  sectionHeading: { fontSize: '11px', fontWeight: '900', color: '#881337', borderBottom: '1px solid #e2e8f0', paddingBottom: '3px', marginBottom: '6px' },
+  dataRow: { fontSize: '11px', margin: '2px 0', color: '#334155' },
+  table: { width: '100%', borderCollapse: 'collapse', marginBottom: '16px' },
+  thRow: { background: '#881337', color: '#fff' },
+  th: { padding: '6px 8px', fontSize: '11px', textAlign: 'left' },
+  thCenter: { padding: '6px 8px', fontSize: '11px', textAlign: 'center' },
+  thRight: { padding: '6px 8px', fontSize: '11px', textAlign: 'right' },
+  td: { padding: '6px 8px', fontSize: '11px', borderBottom: '1px solid #f1f5f9' },
+  tdCenter: { padding: '6px 8px', fontSize: '11px', textAlign: 'center', borderBottom: '1px solid #f1f5f9', color: '#64748b' },
+  tdRight: { padding: '6px 8px', fontSize: '11px', textAlign: 'right', borderBottom: '1px solid #f1f5f9' },
+  tfootRow: { background: '#f8fafc', borderTop: '2px solid #881337' },
+  tdTotalLabel: { padding: '8px', fontSize: '12px', fontWeight: 'bold', textAlign: 'right', color: '#881337' },
+  tdTotalValue: { padding: '8px', fontSize: '15px', fontWeight: '900', textAlign: 'right', color: '#881337' },
+  notesBox: { background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '10px 14px' }
+};
