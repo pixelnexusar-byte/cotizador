@@ -23,8 +23,10 @@ export default function SolQuote({
   const [mode, setMode] = useState('courier');
   const [settings, setSettings] = useState(solDefaults);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [autoRef, setAutoRef] = useState('');
 
   useEffect(() => {
+    setAutoRef(`DCAM-${Math.floor(1000 + Math.random() * 9000)}`);
     try {
       const stored = JSON.parse(window.localStorage.getItem(settingsKey));
       if (stored) setSettings({ ...solDefaults, ...stored, rates: { ...solDefaults.rates, ...stored.rates } });
@@ -45,6 +47,7 @@ export default function SolQuote({
       // Keep edits usable in the current session.
     }
   }, [settings, settingsLoaded]);
+
   const [showFob, setShowFob] = useState(true);
   const [proforma, setProforma] = useState(false);
   const [copyStatus, setCopyStatus] = useState('');
@@ -66,6 +69,14 @@ export default function SolQuote({
   const conversionLabel = showFob ? 'Equivalente con mercadería' : 'Equivalente del servicio';
   const convertedAmount = (showFob ? quote.total : quote.service) * exchangeRate;
   const date = new Date().toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+  const displayRef = document.reference.trim() || autoRef;
+
+  // Cálculo visual de peso y volumen para replicar el detalle logístico manual
+  const valWeight = Number(weight) || 0;
+  const valVolume = Number(volume) || 0;
+  const volumetricWeight = Number((valVolume * 167).toFixed(2));
+  const chargeableWeight = quote.chargeableWeight ?? Math.max(valWeight, volumetricWeight);
+
   const setOption = (key, value) => setSettings(current => ({ ...current, [key]: value }));
   const setDocumentField = (key, value) => setDocument(current => ({ ...current, [key]: value }));
 
@@ -169,38 +180,66 @@ export default function SolQuote({
       {active && !error && !invoiceError && (
         <article className="print-sheet sol-sheet" style={{ ...styles.quoteCard, overflowWrap: 'anywhere' }}>
           <header style={styles.quoteHeader}>
-            <img src="/logo.png" alt="De China al Mundo" style={{ maxHeight: 55, objectFit: 'contain' }} />
+            <img src="/logo.png" alt="De China al Mundo" style={{ maxHeight: '55px', objectFit: 'contain' }} />
             <div style={{ textAlign: 'right' }}>
-              <h1 style={{ color: '#881337', fontSize: 19, fontWeight: 900 }}>{title.toUpperCase()}</h1>
-              <p style={styles.dataRow}>{date}{document.reference.trim() && ` · Ref. ${document.reference}`}</p>
+              <h1 style={{ margin: 0, fontSize: '18px', color: '#881337', fontWeight: '900' }}>{title.toUpperCase()}</h1>
+              <p style={{ margin: '2px 0 0 0', fontSize: '11px', color: '#64748b' }}>
+                Fecha: {date}{displayRef && ` | Ref: ${displayRef}`}
+              </p>
             </div>
           </header>
+
           <hr style={styles.hrDivider} />
-          <div style={styles.twoColGrid}>
-            <div>
-              <h3 style={styles.sectionHeading}>{proforma ? 'COMPRADOR' : 'CLIENTE'}</h3>
-              <p style={styles.dataRow}>{clientName || 'Consumidor Final'}</p>
-              {clientPhone && <p style={styles.dataRow}>{clientPhone}</p>}
-              {proforma && <p style={styles.dataRow}>{document.buyerId} · {document.buyerAddress}</p>}
+
+          {proforma ? (
+            <>
+              <div style={styles.twoColGrid}>
+                <div>
+                  <h3 style={styles.sectionHeading}>COMPRADOR</h3>
+                  <p style={styles.dataRow}><strong>Cliente:</strong> {clientName || 'Consumidor Final'}</p>
+                  {clientPhone && <p style={styles.dataRow}><strong>Contacto:</strong> +{clientPhone}</p>}
+                  <p style={styles.dataRow}>{document.buyerId} · {document.buyerAddress}</p>
+                </div>
+                <div>
+                  <h3 style={styles.sectionHeading}>EMISOR</h3>
+                  <p style={styles.dataRow}>{document.issuer}</p>
+                  <p style={styles.dataRow}>{document.issuerId} · {document.issuerAddress}</p>
+                </div>
+              </div>
+              <div style={{ ...styles.twoColGrid, marginBottom: 12 }}>
+                <div>
+                  <h3 style={styles.sectionHeading}>MERCADERÍA</h3>
+                  <p style={styles.dataRow}><strong>Producto:</strong> {product || 'Mercadería General'}</p>
+                  <p style={styles.dataRow}><strong>Posición:</strong> {hscode || 'A clasificar'}</p>
+                  <p style={styles.dataRow}><strong>Detalle:</strong> Cantidad {document.quantity} · FOB {document.place}</p>
+                </div>
+                <div>
+                  <h3 style={styles.sectionHeading}>DETALLE LOGÍSTICO</h3>
+                  <p style={styles.dataRow}><strong>Modalidad:</strong> {solModes[mode].label}</p>
+                  <p style={styles.dataRow}><strong>Peso / Vol.:</strong> {valWeight} kg | {valVolume} m³</p>
+                  <p style={styles.dataRow}><strong>Peso Facturable:</strong> {chargeableWeight} kg</p>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div style={styles.twoColGrid}>
+              <div>
+                <h3 style={styles.sectionHeading}>DATOS DEL CLIENTE</h3>
+                <p style={styles.dataRow}><strong>Cliente:</strong> {clientName || 'Consumidor Final'}</p>
+                {clientPhone && <p style={styles.dataRow}><strong>Contacto:</strong> +{clientPhone}</p>}
+                <p style={styles.dataRow}><strong>Producto:</strong> {product || 'Mercadería General'}</p>
+                <p style={styles.dataRow}><strong>Posición:</strong> {hscode || 'A clasificar'}</p>
+                <p style={styles.dataRow}><strong>Término de Compra:</strong> FOB{document.place.trim() ? ` (${document.place.trim()})` : ''}</p>
+              </div>
+              <div>
+                <h3 style={styles.sectionHeading}>DETALLE LOGÍSTICO</h3>
+                <p style={styles.dataRow}><strong>Modalidad:</strong> {solModes[mode].label}</p>
+                <p style={styles.dataRow}><strong>Peso / Vol.:</strong> {valWeight} kg | {valVolume} m³</p>
+                <p style={styles.dataRow}><strong>Peso Facturable:</strong> {chargeableWeight} kg</p>
+              </div>
             </div>
-            <div>
-              <h3 style={styles.sectionHeading}>EMISOR</h3>
-              <p style={styles.dataRow}>{proforma ? document.issuer : 'De China al Mundo'}</p>
-              {proforma && <p style={styles.dataRow}>{document.issuerId} · {document.issuerAddress}</p>}
-            </div>
-          </div>
-          <div style={{ ...styles.twoColGrid, marginBottom: 12 }}>
-            <div>
-              <h3 style={styles.sectionHeading}>MERCADERÍA</h3>
-              <p style={styles.dataRow}>{product}{hscode && ` · Posición ${hscode}`}</p>
-              {proforma && <p style={styles.dataRow}>Cantidad: {document.quantity} · FOB {document.place}</p>}
-            </div>
-            <div>
-              <h3 style={styles.sectionHeading}>ENVÍO</h3>
-              <p style={styles.dataRow}>{solModes[mode].label}</p>
-              <p style={styles.dataRow}>{weight && `${weight} kg reales`}{weight && volume && ' · '}{volume && `${volume} m³`}</p>
-            </div>
-          </div>
+          )}
+
           <table style={styles.table}>
             <thead>
               <tr style={styles.thRow}>
