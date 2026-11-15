@@ -57,7 +57,7 @@ export default function SolQuote({
   });
 
   const fixed = mode === 'all';
-  const quote = calculateSol({ mode, settings, goods, weight, volume, hscode });
+  const quote = calculateSol({ mode, settings, goods, weight, volume });
   const error = quote.error || (!product.trim() ? 'Ingresá la descripción del producto.' : '');
   const invoiceError = proforma && (
     ![document.reference, document.issuer, document.issuerId, document.issuerAddress, clientName,
@@ -83,7 +83,7 @@ export default function SolQuote({
     const fleteLine = quote.lines.find(l => l.label.includes('Flete'))?.amount || 0;
     const seguroLine = quote.lines.find(l => l.label.includes('Seguro'))?.amount || 0;
     const impLine = quote.lines.find(l => l.label.includes('Impuestos'))?.amount || 0;
-    const honLine = quote.lines.find(l => l.label.includes('Honorarios'))?.amount || 35;
+    const honLine = quote.lines.find(l => l.label.includes('Honorarios'))?.amount || settings.fee;
 
     return `*COTIZACIÓN DE IMPORTACIÓN - DE CHINA AL MUNDO*
 ----------------------------------------
@@ -129,6 +129,8 @@ export default function SolQuote({
             }))} />
           <Field label="Seguro (% del FOB)" styles={styles} numeric value={settings.insurance}
             onChange={value => setOption('insurance', value)} />
+          <Field label="Impuestos est. (% del FOB)" styles={styles} numeric value={settings.taxes}
+            onChange={value => setOption('taxes', value)} />
           <Field label="Honorarios (USD)" styles={styles} numeric value={settings.fee}
             onChange={value => setOption('fee', value)} />
         </div>
@@ -247,7 +249,7 @@ export default function SolQuote({
                     ${format.format(convertedAmount)} ARS
                   </td>
                 </tr>
-              )}
+              ))}
             </tfoot>
           </table>
           <div style={styles.notesBox}>
