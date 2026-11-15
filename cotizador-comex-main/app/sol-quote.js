@@ -249,7 +249,7 @@ export default function SolQuote({
                     ${format.format(convertedAmount)} ARS
                   </td>
                 </tr>
-              ))}
+              )}
             </tfoot>
           </table>
           <div style={styles.notesBox}>
