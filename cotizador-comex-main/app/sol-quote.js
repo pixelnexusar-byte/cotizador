@@ -57,7 +57,7 @@ export default function SolQuote({
   });
 
   const fixed = mode === 'all';
-  const quote = calculateSol({ mode, settings, goods, weight, volume });
+  const quote = calculateSol({ mode, settings, goods, weight, volume, hscode });
   const error = quote.error || (!product.trim() ? 'Ingresá la descripción del producto.' : '');
   const invoiceError = proforma && (
     ![document.reference, document.issuer, document.issuerId, document.issuerAddress, clientName,
@@ -71,28 +71,35 @@ export default function SolQuote({
   const date = new Date().toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
   const displayRef = document.reference.trim() || autoRef;
 
-  // Cálculo visual de peso y volumen para replicar el detalle logístico manual
   const valWeight = Number(weight) || 0;
   const valVolume = Number(volume) || 0;
   const volumetricWeight = Number((valVolume * 167).toFixed(2));
-  const chargeableWeight = quote.chargeableWeight ?? Math.max(valWeight, volumetricWeight);
+  const chargeableWeight = Math.max(valWeight, volumetricWeight);
 
   const setOption = (key, value) => setSettings(current => ({ ...current, [key]: value }));
   const setDocumentField = (key, value) => setDocument(current => ({ ...current, [key]: value }));
 
-  const summary = () => [
-    '*COTIZACIÓN DE IMPORTACIÓN - DE CHINA AL MUNDO*',
-    `Cliente: ${clientName || 'Consumidor Final'}`,
-    `Producto: ${product}`,
-    `Modalidad: ${solModes[mode].label}`,
-    weight ? `Peso real: ${weight} kg` : '',
-    volume ? `Volumen: ${volume} m³` : '',
-    showFob && `Mercadería FOB: ${usd(quote.fob)}`,
-    ...quote.lines.map(line => `${line.label}: ${usd(line.amount)}`),
-    `*Total del servicio: ${usd(quote.service)}*`,
-    showFob && `*Total con mercadería: ${usd(quote.total)}*`,
-    exchangeRate > 0 ? `${conversionLabel}: ARS ${format.format(convertedAmount)} (${exchangeRateLabel} ${exchangeRate})` : ''
-  ].filter(Boolean).join('\n');
+  const summary = () => {
+    const fleteLine = quote.lines.find(l => l.label.includes('Flete'))?.amount || 0;
+    const seguroLine = quote.lines.find(l => l.label.includes('Seguro'))?.amount || 0;
+    const impLine = quote.lines.find(l => l.label.includes('Impuestos'))?.amount || 0;
+    const honLine = quote.lines.find(l => l.label.includes('Honorarios'))?.amount || 35;
+
+    return `*COTIZACIÓN DE IMPORTACIÓN - DE CHINA AL MUNDO*
+----------------------------------------
+👤 Cliente: ${clientName || 'Consumidor Final'}
+📦 Producto: ${product || 'Mercadería General'}
+📑 Posición Arancelaria: ${hscode || 'A clasificar'}
+🌐 Término: FOB${document.place.trim() ? ` (${document.place.trim()})` : ''}
+🚢 Modalidad: ${solModes[mode].label}
+----------------------------------------
+✈️ Flete Internacional: $${format.format(fleteLine)} USD
+🛡️ Seguro Estimado: $${format.format(seguroLine)} USD
+🏛️ Impuestos y Aduana: $${format.format(impLine)} USD
+🤝 Honorarios DCAM: $${format.format(honLine)} USD
+----------------------------------------
+💰 TOTAL ESTIMADO DE LA OPERACIÓN: $${format.format(quote.total)} USD${exchangeRate > 0 ? `\n🇦🇷 Total en Pesos: ARS ${format.format(convertedAmount)} (${exchangeRateLabel} ${exchangeRate})` : ''}`;
+  };
 
   const copy = async () => {
     try {
@@ -120,14 +127,10 @@ export default function SolQuote({
             styles={styles} numeric value={rate} onChange={value => setSettings(current => ({
               ...current, rates: { ...current.rates, [mode]: value }
             }))} />
-          {(fixed ? [
-            ['minKg', 'Peso mínimo (kg)'], ['maxKg', 'Peso máximo (kg)'], ['maxCbm', 'Volumen máximo (m³)']
-          ] : [
-            ['insurance', 'Seguro (% del FOB)'], ['taxes', 'Impuestos estimados (% del FOB)'], ['fee', 'Honorarios (USD)']
-          ]).map(([key, label]) => (
-            <Field key={key} label={label} styles={styles} numeric value={settings[key]}
-              onChange={value => setOption(key, value)} />
-          ))}
+          <Field label="Seguro (% del FOB)" styles={styles} numeric value={settings.insurance}
+            onChange={value => setOption('insurance', value)} />
+          <Field label="Honorarios (USD)" styles={styles} numeric value={settings.fee}
+            onChange={value => setOption('fee', value)} />
         </div>
 
         <div style={{ ...styles.formGrid, marginTop: 16 }}>
@@ -191,54 +194,22 @@ export default function SolQuote({
 
           <hr style={styles.hrDivider} />
 
-          {proforma ? (
-            <>
-              <div style={styles.twoColGrid}>
-                <div>
-                  <h3 style={styles.sectionHeading}>COMPRADOR</h3>
-                  <p style={styles.dataRow}><strong>Cliente:</strong> {clientName || 'Consumidor Final'}</p>
-                  {clientPhone && <p style={styles.dataRow}><strong>Contacto:</strong> +{clientPhone}</p>}
-                  <p style={styles.dataRow}>{document.buyerId} · {document.buyerAddress}</p>
-                </div>
-                <div>
-                  <h3 style={styles.sectionHeading}>EMISOR</h3>
-                  <p style={styles.dataRow}>{document.issuer}</p>
-                  <p style={styles.dataRow}>{document.issuerId} · {document.issuerAddress}</p>
-                </div>
-              </div>
-              <div style={{ ...styles.twoColGrid, marginBottom: 12 }}>
-                <div>
-                  <h3 style={styles.sectionHeading}>MERCADERÍA</h3>
-                  <p style={styles.dataRow}><strong>Producto:</strong> {product || 'Mercadería General'}</p>
-                  <p style={styles.dataRow}><strong>Posición:</strong> {hscode || 'A clasificar'}</p>
-                  <p style={styles.dataRow}><strong>Detalle:</strong> Cantidad {document.quantity} · FOB {document.place}</p>
-                </div>
-                <div>
-                  <h3 style={styles.sectionHeading}>DETALLE LOGÍSTICO</h3>
-                  <p style={styles.dataRow}><strong>Modalidad:</strong> {solModes[mode].label}</p>
-                  <p style={styles.dataRow}><strong>Peso / Vol.:</strong> {valWeight} kg | {valVolume} m³</p>
-                  <p style={styles.dataRow}><strong>Peso Facturable:</strong> {chargeableWeight} kg</p>
-                </div>
-              </div>
-            </>
-          ) : (
-            <div style={styles.twoColGrid}>
-              <div>
-                <h3 style={styles.sectionHeading}>DATOS DEL CLIENTE</h3>
-                <p style={styles.dataRow}><strong>Cliente:</strong> {clientName || 'Consumidor Final'}</p>
-                {clientPhone && <p style={styles.dataRow}><strong>Contacto:</strong> +{clientPhone}</p>}
-                <p style={styles.dataRow}><strong>Producto:</strong> {product || 'Mercadería General'}</p>
-                <p style={styles.dataRow}><strong>Posición:</strong> {hscode || 'A clasificar'}</p>
-                <p style={styles.dataRow}><strong>Término de Compra:</strong> FOB{document.place.trim() ? ` (${document.place.trim()})` : ''}</p>
-              </div>
-              <div>
-                <h3 style={styles.sectionHeading}>DETALLE LOGÍSTICO</h3>
-                <p style={styles.dataRow}><strong>Modalidad:</strong> {solModes[mode].label}</p>
-                <p style={styles.dataRow}><strong>Peso / Vol.:</strong> {valWeight} kg | {valVolume} m³</p>
-                <p style={styles.dataRow}><strong>Peso Facturable:</strong> {chargeableWeight} kg</p>
-              </div>
+          <div style={styles.twoColGrid}>
+            <div>
+              <h3 style={styles.sectionHeading}>DATOS DEL CLIENTE</h3>
+              <p style={styles.dataRow}><strong>Cliente:</strong> {clientName || 'Consumidor Final'}</p>
+              {clientPhone && <p style={styles.dataRow}><strong>Contacto:</strong> +{clientPhone}</p>}
+              <p style={styles.dataRow}><strong>Producto:</strong> {product || 'Mercadería General'}</p>
+              <p style={styles.dataRow}><strong>Posición:</strong> {hscode || 'A clasificar'}</p>
+              <p style={styles.dataRow}><strong>Término de Compra:</strong> FOB{document.place.trim() ? ` (${document.place.trim()})` : ''}</p>
             </div>
-          )}
+            <div>
+              <h3 style={styles.sectionHeading}>DETALLE LOGÍSTICO</h3>
+              <p style={styles.dataRow}><strong>Modalidad:</strong> {solModes[mode].label}</p>
+              <p style={styles.dataRow}><strong>Peso / Vol.:</strong> {valWeight} kg | {valVolume} m³</p>
+              <p style={styles.dataRow}><strong>Peso Facturable:</strong> {chargeableWeight} kg</p>
+            </div>
+          </div>
 
           <table style={styles.table}>
             <thead>
@@ -250,40 +221,38 @@ export default function SolQuote({
             </thead>
             <tbody>
               {showFob && <tr>
-                <td style={styles.td}>Mercadería FOB</td>
-                <td style={styles.tdCenter}>{proforma ? `${document.quantity} u. · ${new Intl.NumberFormat('es-AR', { maximumFractionDigits: 8 }).format(quote.fob / Number(document.quantity))} USD/u.` : product}</td>
+                <td style={styles.td}>Valor Mercadería (FOB)</td>
+                <td style={styles.tdCenter}>-</td>
                 <td style={styles.tdRight}>{format.format(quote.fob)}</td>
               </tr>}
               {quote.lines.map(line => (
                 <tr key={line.label}>
                   <td style={styles.td}>{line.label}</td>
-                  <td style={styles.tdCenter}>{!showFob && line.detail.endsWith('% del FOB') ? 'Estimado' : line.detail}</td>
+                  <td style={styles.tdCenter}>{line.detail}</td>
                   <td style={styles.tdRight}>{format.format(line.amount)}</td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
-              <tr>
-                <td colSpan={2} style={styles.tdTotalLabel}>Total del servicio</td>
-                <td style={styles.tdTotalValue}>{usd(quote.service)}</td>
+              <tr style={styles.tfootRow}>
+                <td colSpan={2} style={styles.tdTotalLabel}>TOTAL ESTIMADO DE LA OPERACIÓN (USD):</td>
+                <td style={styles.tdTotalValue}>${format.format(quote.total)}</td>
               </tr>
-              {showFob && <tr style={styles.tfootRow}>
-                <td colSpan={2} style={styles.tdTotalLabel}>Total con mercadería</td>
-                <td style={styles.tdTotalValue}>{usd(quote.total)}</td>
-              </tr>}
               {exchangeRate > 0 && (
-                <tr>
-                  <td colSpan={2} style={styles.tdTotalLabel}>{conversionLabel} ({exchangeRateLabel} {exchangeRate})</td>
-                  <td style={styles.tdTotalValue}>ARS {format.format(convertedAmount)}</td>
+                <tr style={{ background: '#f1f5f9', borderTop: '1px solid #cbd5e1' }}>
+                  <td colSpan={2} style={{ ...styles.tdTotalLabel, color: '#0f172a' }}>
+                    TOTAL EQUIVALENTE EN PESOS ({exchangeRateLabel} ${exchangeRate}):
+                  </td>
+                  <td style={{ ...styles.tdTotalValue, color: '#0f172a' }}>
+                    ${format.format(convertedAmount)} ARS
+                  </td>
                 </tr>
               )}
             </tfoot>
           </table>
           <div style={styles.notesBox}>
-            {proforma && <p style={styles.dataRow}>Condiciones de pago: {document.terms}</p>}
-            {Number(document.validity) > 0 && <p style={styles.dataRow}>Validez: {document.validity} días hábiles.</p>}
-            <p style={styles.dataRow}>Importes estimados sujetos a confirmación de la mercadería y del embarque.</p>
-            {fixed && <p style={styles.dataRow}>Servicio hasta Sarandí.</p>}
+            <p style={styles.dataRow}>Validez: {document.validity || 7} días hábiles sujeta a confirmación de bodega.</p>
+            <p style={styles.dataRow}>Valores impositivos oficiales según reglamentación aduanera vigente.</p>
           </div>
         </article>
       )}
