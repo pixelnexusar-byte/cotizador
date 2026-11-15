@@ -13,23 +13,21 @@ export const solDefaults = {
 const round = value => Math.round(value * 100) / 100;
 const valid = value => value !== '' && Number.isFinite(Number(value)) && Number(value) >= 0;
 
-// Cálculo real de impuestos aduaneros basado en posición arancelaria (NCM)
 function calculateRealTaxes(fob, freight, insurance, hscode) {
-  if (!fob) return { ddiUSD: 0, statUSD: 0, totalTaxes: 0, lines: [] };
+  if (!fob) return { totalTaxes: 0, lines: [] };
 
   const legalCifValue = fob + (freight || 0) + (insurance || 0);
   
-  // DDI estimado según arancel o estándar de 16% si la NCM no está catalogada
   let ddiRate = 16; 
   const cleanHscode = String(hscode || '').replace(/\D/g, '');
   if (cleanHscode.startsWith('84') || cleanHscode.startsWith('85') || cleanHscode.startsWith('90')) {
-    ddiRate = 14; // Bienes de capital / instrumental / tecnología
+    ddiRate = 14; 
   } else if (cleanHscode.startsWith('61') || cleanHscode.startsWith('62') || cleanHscode.startsWith('64')) {
-    ddiRate = 35; // Textil / Calzado
+    ddiRate = 35; 
   }
 
   const ddiAmount = legalCifValue * (ddiRate / 100);
-  const statAmount = legalCifValue * 0.03; // Tasa estadística fija 3%
+  const statAmount = legalCifValue * 0.03; 
   const taxBase = legalCifValue + ddiAmount + statAmount;
 
   const ivaAmount = taxBase * 0.21;
@@ -58,7 +56,6 @@ export function calculateSol({ mode, settings, goods, weight, volume, hscode }) 
   const cbm = Number(volume);
   const fixed = mode === 'all';
   
-  // Regla de tarifas por volumen según m3 (> 3 m3 baja a 300 USD/m3)
   let activeRate = settings.rates[mode];
   if (mode === 'lcl' && cbm > 3) {
     activeRate = 300;
@@ -71,11 +68,8 @@ export function calculateSol({ mode, settings, goods, weight, volume, hscode }) 
     return { error: 'Ingresá un peso y un volumen válidos.' };
   }
 
-  if (fixed) {
-    const { minKg, maxKg, maxCbm } = settings;
-    if (kg > 0 && kg < 300 && cbm > 0 && cbm < 0.5) {
-      return { error: 'Para cargas menores a 300 kg y 0.5 m³, la regla de operación indica cotizar Marítimo por m³ o Courier.' };
-    }
+  if (fixed && kg > 0 && kg < 300 && cbm > 0 && cbm < 0.5) {
+    return { error: 'Para cargas menores a 300 kg y 0.5 m³, la regla operacional indica cotizar Marítimo por m³ o Courier.' };
   }
 
   const freightAmount = fixed ? activeRate : round(quantity * +activeRate);
@@ -94,5 +88,10 @@ export function calculateSol({ mode, settings, goods, weight, volume, hscode }) 
   ];
 
   const service = round(lines.reduce((total, line) => total + line.amount, 0));
-  return { lines, fob: round(fob), service, total: round(round(fob) + (fixed ? service : freightAmount + insuranceAmount + taxesData.totalTaxes + feeAmount)) };
+  return { 
+    lines, 
+    fob: round(fob), 
+    service, 
+    total: round(round(fob) + (fixed ? service : freightAmount + insuranceAmount + taxesData.totalTaxes + feeAmount)) 
+  };
 }
