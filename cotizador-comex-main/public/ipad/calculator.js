@@ -11,13 +11,19 @@
     all_in_aereo: { label: 'All In Aéreo', rate: 48, unit: 'kg facturable' }
   };
   function defaults() {
-    return { clientName: '', clientPhone: '', productDesc: '', hscode: '', incoterm: 'FOB',
+    return {
+      clientName: '', clientPhone: '', productDesc: '', hscode: '', incoterm: 'FOB',
       goodsValue: '', weightKg: '', cbm: '', exchangeRate: '', useLiveRate: false,
       liveRateType: 'blue', shippingMode: 'maritimo_compartido', unitFreightRate: 8.5,
-      enableGoodsValue: true, enableDdi: true, ddiRate: 16, enableStat: true, statRate: 3,
-      enableIva: true, ivaRate: 21, enableIvaAdic: true, ivaAdicRate: 20,
-      enableGanancias: true, gananciasRate: 6, enableIibb: true, iibbRate: 2.5,
-      enableLocalExpenses: true, localExpenses: '', enableInsurance: true, serviceFee: '' };
+      enableGoodsValue: true,
+      enableDdi: true, ddiRate: 16, ddiLabel: 'Derechos de importación',
+      enableStat: true, statRate: 3, statLabel: 'Tasa de estadística',
+      enableIva: true, ivaRate: 21, ivaLabel: 'IVA general',
+      enableIvaAdic: true, ivaAdicRate: 20, ivaAdicLabel: 'IVA adicional',
+      enableGanancias: true, gananciasRate: 6, gananciasLabel: 'Percepción Ganancias',
+      enableIibb: true, iibbRate: 2.5, iibbLabel: 'Percepción IIBB',
+      enableLocalExpenses: true, localExpenses: '', enableInsurance: true, serviceFee: ''
+    };
   }
   function number(value) { var n = Number(value); return isFinite(n) ? n : 0; }
   function round(value) { return Number(value.toFixed(2)); }

@@ -10,7 +10,7 @@
   <title>DCAM · Cotizador para iPad</title>
   <link rel="apple-touch-icon" href="./icon.png">
   <link rel="icon" href="./icon.png" type="image/png">
-  <link rel="stylesheet" href="./app.css?v=1">
+  <link rel="stylesheet" href="./app.css?v=2">
 </head>
 <body>
   <noscript>Activá JavaScript en Ajustes &gt; Safari &gt; Avanzado para calcular la cotización.</noscript>
@@ -60,12 +60,12 @@
           <div class="fields"><div class="field"><label for="localExpenses">Gastos locales · USD</label><input id="localExpenses" type="number" step="any" placeholder="0.00"></div></div>
           <button id="tax-toggle" class="tax-toggle" type="button" aria-expanded="false" aria-controls="taxes">Ajustar alícuotas impositivas +</button>
           <div id="taxes" class="hidden">
-            <div class="tax-field"><label class="check"><input id="enableDdi" type="checkbox"> Derechos de importación</label><label class="sr-only" for="ddiRate">DDI en porcentaje</label><input id="ddiRate" type="number" step="any"><span>%</span></div>
-            <div class="tax-field"><label class="check"><input id="enableStat" type="checkbox"> Tasa de estadística</label><label class="sr-only" for="statRate">Estadística en porcentaje</label><input id="statRate" type="number" step="any"><span>%</span></div>
-            <div class="tax-field"><label class="check"><input id="enableIva" type="checkbox"> IVA general</label><label class="sr-only" for="ivaRate">IVA en porcentaje</label><input id="ivaRate" type="number" step="any"><span>%</span></div>
-            <div class="tax-field"><label class="check"><input id="enableIvaAdic" type="checkbox"> IVA adicional</label><label class="sr-only" for="ivaAdicRate">IVA adicional en porcentaje</label><input id="ivaAdicRate" type="number" step="any"><span>%</span></div>
-            <div class="tax-field"><label class="check"><input id="enableGanancias" type="checkbox"> Ganancias</label><label class="sr-only" for="gananciasRate">Ganancias en porcentaje</label><input id="gananciasRate" type="number" step="any"><span>%</span></div>
-            <div class="tax-field"><label class="check"><input id="enableIibb" type="checkbox"> Ingresos brutos</label><label class="sr-only" for="iibbRate">IIBB en porcentaje</label><input id="iibbRate" type="number" step="any"><span>%</span></div>
+            <div class="tax-field"><input id="enableDdi" type="checkbox" class="tax-check" aria-label="Habilitar DDI"><input id="ddiLabel" type="text" class="tax-name" aria-label="Nombre DDI"><input id="ddiRate" type="number" step="any" class="tax-rate" aria-label="DDI en porcentaje"><span>%</span></div>
+            <div class="tax-field"><input id="enableStat" type="checkbox" class="tax-check" aria-label="Habilitar Estadística"><input id="statLabel" type="text" class="tax-name" aria-label="Nombre Estadística"><input id="statRate" type="number" step="any" class="tax-rate" aria-label="Estadística en porcentaje"><span>%</span></div>
+            <div class="tax-field"><input id="enableIva" type="checkbox" class="tax-check" aria-label="Habilitar IVA"><input id="ivaLabel" type="text" class="tax-name" aria-label="Nombre IVA"><input id="ivaRate" type="number" step="any" class="tax-rate" aria-label="IVA en porcentaje"><span>%</span></div>
+            <div class="tax-field"><input id="enableIvaAdic" type="checkbox" class="tax-check" aria-label="Habilitar IVA adicional"><input id="ivaAdicLabel" type="text" class="tax-name" aria-label="Nombre IVA adicional"><input id="ivaAdicRate" type="number" step="any" class="tax-rate" aria-label="IVA adicional en porcentaje"><span>%</span></div>
+            <div class="tax-field"><input id="enableGanancias" type="checkbox" class="tax-check" aria-label="Habilitar Ganancias"><input id="gananciasLabel" type="text" class="tax-name" aria-label="Nombre Ganancias"><input id="gananciasRate" type="number" step="any" class="tax-rate" aria-label="Ganancias en porcentaje"><span>%</span></div>
+            <div class="tax-field"><input id="enableIibb" type="checkbox" class="tax-check" aria-label="Habilitar IIBB"><input id="iibbLabel" type="text" class="tax-name" aria-label="Nombre IIBB"><input id="iibbRate" type="number" step="any" class="tax-rate" aria-label="IIBB en porcentaje"><span>%</span></div>
           </div><p id="tax-hint" class="hint"></p>
         </section>
       </form>
@@ -86,7 +86,7 @@
   <footer class="totalbar no-print"><div><span>TOTAL ESTIMADO</span><strong id="quick-total">USD 0.00</strong><small id="quick-ars"></small></div><button id="view-quote" type="button">Ver cotización →</button></footer>
   <div id="copy-dialog" class="overlay hidden no-print" role="dialog" aria-modal="true" aria-labelledby="copy-title"><div class="dialog"><h2 id="copy-title">Resumen de la cotización</h2><p id="copy-help">Seleccioná el texto y elegí Copiar.</p><label class="sr-only" for="copy-text">Texto de la cotización</label><textarea id="copy-text" readonly rows="12"></textarea><button id="close-copy" type="button">Cerrar</button></div></div>
   <div id="install-dialog" class="overlay hidden no-print" role="dialog" aria-modal="true" aria-labelledby="install-title"><div class="dialog"><h2 id="install-title">Tu cotizador en Inicio</h2><p>En Safari, tocá <strong>Compartir</strong>, elegí <strong>Agregar a inicio</strong> y confirmá <strong>Agregar</strong>.</p><p>Después abrí el ícono <strong>DCAM Cotizador</strong>.</p><button id="close-install" type="button">Entendido</button></div></div>
-  <script src="./calculator.js?v=1"></script>
-  <script src="./app.js?v=1"></script>
+  <script src="./calculator.js?v=2"></script>
+  <script src="./app.js?v=2"></script>
 </body>
 </html>

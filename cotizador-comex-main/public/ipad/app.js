@@ -89,14 +89,24 @@
   }
   function render() {
     var c = result = model.calculate(data), mode = model.modes[data.shippingMode], buttons = el('modes').getElementsByTagName('button'), i, active,
-      pairs = [['enableDdi', 'ddiRate'], ['enableStat', 'statRate'], ['enableIva', 'ivaRate'], ['enableIvaAdic', 'ivaAdicRate'], ['enableGanancias', 'gananciasRate'], ['enableIibb', 'iibbRate']];
+      pairs = [
+        ['enableDdi', 'ddiRate', 'ddiLabel'],
+        ['enableStat', 'statRate', 'statLabel'],
+        ['enableIva', 'ivaRate', 'ivaLabel'],
+        ['enableIvaAdic', 'ivaAdicRate', 'ivaAdicLabel'],
+        ['enableGanancias', 'gananciasRate', 'gananciasLabel'],
+        ['enableIibb', 'iibbRate', 'iibbLabel']
+      ];
     for (i = 0; i < buttons.length; i += 1) {
       active = buttons[i].getAttribute('data-mode') === data.shippingMode; buttons[i].className = active ? 'active' : ''; buttons[i].setAttribute('aria-pressed', active ? 'true' : 'false');
     }
     text(el('freight-label'), 'Tarifa de flete · USD / ' + mode.unit);
     text(el('weight-hint'), 'Peso volumétrico: ' + c.volumetricWeight + ' kg · Peso facturable: ' + c.chargeableWeight + ' kg.');
     controls.localExpenses.disabled = !data.enableLocalExpenses || c.isAllInOrDdp;
-    for (i = 0; i < pairs.length; i += 1) { controls[pairs[i][1]].disabled = !data[pairs[i][0]] || c.isAllInOrDdp; }
+    for (i = 0; i < pairs.length; i += 1) {
+      controls[pairs[i][1]].disabled = !data[pairs[i][0]] || c.isAllInOrDdp;
+      controls[pairs[i][2]].disabled = !data[pairs[i][0]] || c.isAllInOrDdp;
+    }
     text(el('tax-hint'), c.isAllInOrDdp ? 'Los impuestos y gastos locales están incluidos en la modalidad seleccionada.' : 'Las alícuotas se aplican sobre las mismas bases del cotizador principal.');
     controls.exchangeRate.readOnly = data.useLiveRate;
     show(el('rate-type-field'), data.useLiveRate); show(el('refresh-rate'), data.useLiveRate);
@@ -117,12 +127,12 @@
     if (data.enableInsurance) { row('Seguro estimado', '1.00%', c.insurance); }
     row(data.enableGoodsValue ? 'Valor en aduana / Base tributaria' : 'Subtotal flete y seguro', data.enableGoodsValue ? (data.incoterm === 'CIF' || data.incoterm === 'DDP' ? 'Valor ' + data.incoterm : data.incoterm + ' + Flete + Seguro') : 'Flete + Seguro', c.displayedBaseValue, 'subtotal');
     if (!c.isAllInOrDdp) {
-      if (data.enableDdi) { row('Derechos de importación', data.ddiRate + '%', c.ddiAmount); }
-      if (data.enableStat) { row('Tasa de estadística', data.statRate + '%', c.statAmount); }
-      if (data.enableIva) { row('IVA general', data.ivaRate + '%', c.ivaAmount); }
-      if (data.enableIvaAdic) { row('IVA adicional', data.ivaAdicRate + '%', c.ivaAdicAmount); }
-      if (data.enableGanancias) { row('Percepción Ganancias', data.gananciasRate + '%', c.gananciasAmount); }
-      if (data.enableIibb) { row('Percepción IIBB', data.iibbRate + '%', c.iibbAmount); }
+      if (data.enableDdi) { row(data.ddiLabel || 'Derechos de importación', data.ddiRate + '%', c.ddiAmount); }
+      if (data.enableStat) { row(data.statLabel || 'Tasa de estadística', data.statRate + '%', c.statAmount); }
+      if (data.enableIva) { row(data.ivaLabel || 'IVA general', data.ivaRate + '%', c.ivaAmount); }
+      if (data.enableIvaAdic) { row(data.ivaAdicLabel || 'IVA adicional', data.ivaAdicRate + '%', c.ivaAdicAmount); }
+      if (data.enableGanancias) { row(data.gananciasLabel || 'Percepción Ganancias', data.gananciasRate + '%', c.gananciasAmount); }
+      if (data.enableIibb) { row(data.iibbLabel || 'Percepción IIBB', data.iibbRate + '%', c.iibbAmount); }
       if (data.enableLocalExpenses) { row('Gastos locales / Puerto / Despacho', 'Fijo estimado', c.activeLocalExpenses); }
     } else { row('Servicio integral aduanero / Impuestos', 'Incluido', 0); }
     row('Honorarios y gestión DCAM', 'Coordinación integral', c.valServiceFee);
