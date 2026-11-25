@@ -3,7 +3,6 @@ import { calculateSol, solDefaults, solModes } from './sol-pricing.mjs';
 
 const format = new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const settingsKey = 'cotizador-comex:sol-rates';
-const usd = value => `USD ${format.format(value)}`;
 
 function Field({ label, value, onChange, styles, numeric = false }) {
   return (
@@ -29,7 +28,16 @@ export default function SolQuote({
     setAutoRef(`DCAM-${Math.floor(1000 + Math.random() * 9000)}`);
     try {
       const stored = JSON.parse(window.localStorage.getItem(settingsKey));
-      if (stored) setSettings({ ...solDefaults, ...stored, rates: { ...solDefaults.rates, ...stored.rates } });
+      if (stored) {
+        setSettings({
+          ...solDefaults,
+          ...stored,
+          rates: { ...solDefaults.rates, ...(stored.rates || {}) },
+          enabled: { ...solDefaults.enabled, ...(stored.enabled || {}) },
+          labels: { ...solDefaults.labels, ...(stored.labels || {}) },
+          customItems: Array.isArray(stored.customItems) ? stored.customItems : []
+        });
+      }
     } catch {
       // Browser storage may be unavailable.
     }
@@ -41,7 +49,10 @@ export default function SolQuote({
     try {
       window.localStorage.setItem(settingsKey, JSON.stringify({
         ...Object.fromEntries(Object.entries(settings).filter(([, value]) => value !== '')),
-        rates: Object.fromEntries(Object.entries(settings.rates).filter(([, value]) => value !== ''))
+        rates: Object.fromEntries(Object.entries(settings.rates).filter(([, value]) => value !== '')),
+        enabled: settings.enabled,
+        labels: settings.labels,
+        customItems: settings.customItems
       }));
     } catch {
       // Keep edits usable in the current session.
@@ -66,8 +77,8 @@ export default function SolQuote({
   );
   const title = proforma ? 'Factura proforma' : 'Cotización de importación';
   const rate = settings.rates[mode];
-  const conversionLabel = showFob ? 'Equivalente con mercadería' : 'Equivalente del servicio';
-  const convertedAmount = (showFob ? quote.total : quote.service) * exchangeRate;
+  const displayTotal = showFob ? quote.total : quote.service;
+  const convertedAmount = displayTotal * exchangeRate;
   const date = new Date().toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
   const displayRef = document.reference.trim() || autoRef;
 
@@ -77,13 +88,31 @@ export default function SolQuote({
   const chargeableWeight = Math.max(valWeight, volumetricWeight);
 
   const setOption = (key, value) => setSettings(current => ({ ...current, [key]: value }));
+  const setEnabled = (key, value) => setSettings(current => ({
+    ...current, enabled: { ...current.enabled, [key]: value }
+  }));
+  const setLabel = (key, value) => setSettings(current => ({
+    ...current, labels: { ...current.labels, [key]: value }
+  }));
+  const addCustomItem = () => setSettings(current => ({
+    ...current,
+    customItems: [...(current.customItems || []), { id: `custom-${Date.now()}`, enabled: true, label: 'Nuevo ítem', amount: '0' }]
+  }));
+  const updateCustomItem = (id, patch) => setSettings(current => ({
+    ...current,
+    customItems: (current.customItems || []).map(item => item.id === id ? { ...item, ...patch } : item)
+  }));
+  const removeCustomItem = (id) => setSettings(current => ({
+    ...current,
+    customItems: (current.customItems || []).filter(item => item.id !== id)
+  }));
   const setDocumentField = (key, value) => setDocument(current => ({ ...current, [key]: value }));
 
   const summary = () => {
-    const fleteLine = quote.lines.find(l => l.label.includes('Flete'))?.amount || 0;
-    const seguroLine = quote.lines.find(l => l.label.includes('Seguro'))?.amount || 0;
-    const impLine = quote.lines.find(l => l.label.includes('Impuestos'))?.amount || 0;
-    const honLine = quote.lines.find(l => l.label.includes('Honorarios'))?.amount || settings.fee;
+    const itemLines = [
+      ...(showFob ? [`💵 Valor Mercadería (FOB): $${format.format(quote.fob)} USD`] : []),
+      ...quote.lines.map(line => `• ${line.label}: $${format.format(line.amount)} USD`)
+    ].join('\n');
 
     return `*COTIZACIÓN DE IMPORTACIÓN - DE CHINA AL MUNDO*
 ----------------------------------------
@@ -93,12 +122,9 @@ export default function SolQuote({
 🌐 Término: FOB${document.place.trim() ? ` (${document.place.trim()})` : ''}
 🚢 Modalidad: ${solModes[mode].label}
 ----------------------------------------
-✈️ Flete Internacional: $${format.format(fleteLine)} USD
-🛡️ Seguro Estimado: $${format.format(seguroLine)} USD
-🏛️ Impuestos y Aduana: $${format.format(impLine)} USD
-🤝 Honorarios DCAM: $${format.format(honLine)} USD
+${itemLines}
 ----------------------------------------
-💰 TOTAL ESTIMADO DE LA OPERACIÓN: $${format.format(quote.total)} USD${exchangeRate > 0 ? `\n🇦🇷 Total en Pesos: ARS ${format.format(convertedAmount)} (${exchangeRateLabel} ${exchangeRate})` : ''}`;
+💰 ${showFob ? 'TOTAL ESTIMADO DE LA OPERACIÓN' : 'TOTAL SERVICIO LOGÍSTICO E IMPUESTOS'}: $${format.format(displayTotal)} USD${exchangeRate > 0 ? `\n🇦🇷 Total en Pesos: ARS ${format.format(convertedAmount)} (${exchangeRateLabel} ${exchangeRate})` : ''}`;
   };
 
   const copy = async () => {
@@ -108,6 +134,17 @@ export default function SolQuote({
     } catch {
       setCopyStatus('No se pudo copiar el resumen.');
     }
+  };
+
+  const itemRowStyle = {
+    display: 'grid',
+    gridTemplateColumns: 'auto 1fr 110px auto',
+    gap: 8,
+    alignItems: 'center',
+    background: '#1e293b',
+    padding: '8px 10px',
+    borderRadius: 6,
+    border: '1px solid #334155'
   };
 
   return (
@@ -122,17 +159,82 @@ export default function SolQuote({
             </button>
           ))}
         </div>
-        <div style={{ ...styles.formGrid, marginTop: 16 }}>
-          <Field label={fixed ? 'Precio cerrado (USD)' : `Tarifa (USD / ${solModes[mode].unit})`}
-            styles={styles} numeric value={rate} onChange={value => setSettings(current => ({
-              ...current, rates: { ...current.rates, [mode]: value }
-            }))} />
-          <Field label="Seguro (% del FOB)" styles={styles} numeric value={settings.insurance}
-            onChange={value => setOption('insurance', value)} />
-          <Field label="Impuestos est. (% del FOB)" styles={styles} numeric value={settings.taxes}
-            onChange={value => setOption('taxes', value)} />
-          <Field label="Honorarios (USD)" styles={styles} numeric value={settings.fee}
-            onChange={value => setOption('fee', value)} />
+
+        <div style={{ marginTop: 16, background: '#0f172a', padding: 14, borderRadius: 8, border: '1px solid #334155' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <span style={{ fontSize: 13, fontWeight: 'bold', color: '#f1f5f9' }}>
+              ⚙️ Ítems, impuestos y tarifas (editables):
+            </span>
+            <button type="button" onClick={addCustomItem}
+              style={{ background: '#334155', color: '#fff', border: 'none', padding: '5px 10px', borderRadius: 6, fontSize: 12, cursor: 'pointer' }}>
+              + Agregar ítem
+            </button>
+          </div>
+
+          <div style={{ display: 'grid', gap: 8 }}>
+            {fixed ? (
+              <div style={itemRowStyle}>
+                <input type="checkbox" checked={settings.enabled.all} onChange={e => setEnabled('all', e.target.checked)} />
+                <input style={styles.input} type="text" disabled={!settings.enabled.all}
+                  value={settings.labels.all} onChange={e => setLabel('all', e.target.value)} />
+                <input style={styles.input} type="number" min="0" step="any" disabled={!settings.enabled.all}
+                  value={rate} onChange={e => setSettings(current => ({ ...current, rates: { ...current.rates, [mode]: e.target.value } }))} />
+                <span style={{ fontSize: 11, color: '#94a3b8', minWidth: 52 }}>USD</span>
+              </div>
+            ) : (
+              <>
+                <div style={itemRowStyle}>
+                  <input type="checkbox" checked={settings.enabled.freight} onChange={e => setEnabled('freight', e.target.checked)} />
+                  <input style={styles.input} type="text" disabled={!settings.enabled.freight}
+                    value={settings.labels.freight} onChange={e => setLabel('freight', e.target.value)} />
+                  <input style={styles.input} type="number" min="0" step="any" disabled={!settings.enabled.freight}
+                    value={rate} onChange={e => setSettings(current => ({ ...current, rates: { ...current.rates, [mode]: e.target.value } }))} />
+                  <span style={{ fontSize: 11, color: '#94a3b8', minWidth: 52 }}>USD/{solModes[mode].unit}</span>
+                </div>
+
+                <div style={itemRowStyle}>
+                  <input type="checkbox" checked={settings.enabled.insurance} onChange={e => setEnabled('insurance', e.target.checked)} />
+                  <input style={styles.input} type="text" disabled={!settings.enabled.insurance}
+                    value={settings.labels.insurance} onChange={e => setLabel('insurance', e.target.value)} />
+                  <input style={styles.input} type="number" min="0" step="any" disabled={!settings.enabled.insurance}
+                    value={settings.insurance} onChange={e => setOption('insurance', e.target.value)} />
+                  <span style={{ fontSize: 11, color: '#94a3b8', minWidth: 52 }}>% FOB</span>
+                </div>
+
+                <div style={itemRowStyle}>
+                  <input type="checkbox" checked={settings.enabled.taxes} onChange={e => setEnabled('taxes', e.target.checked)} />
+                  <input style={styles.input} type="text" disabled={!settings.enabled.taxes}
+                    value={settings.labels.taxes} onChange={e => setLabel('taxes', e.target.value)} />
+                  <input style={styles.input} type="number" min="0" step="any" disabled={!settings.enabled.taxes}
+                    value={settings.taxes} onChange={e => setOption('taxes', e.target.value)} />
+                  <span style={{ fontSize: 11, color: '#94a3b8', minWidth: 52 }}>% FOB</span>
+                </div>
+
+                <div style={itemRowStyle}>
+                  <input type="checkbox" checked={settings.enabled.fee} onChange={e => setEnabled('fee', e.target.checked)} />
+                  <input style={styles.input} type="text" disabled={!settings.enabled.fee}
+                    value={settings.labels.fee} onChange={e => setLabel('fee', e.target.value)} />
+                  <input style={styles.input} type="number" min="0" step="any" disabled={!settings.enabled.fee}
+                    value={settings.fee} onChange={e => setOption('fee', e.target.value)} />
+                  <span style={{ fontSize: 11, color: '#94a3b8', minWidth: 52 }}>USD</span>
+                </div>
+              </>
+            )}
+
+            {(settings.customItems || []).map(item => (
+              <div key={item.id} style={itemRowStyle}>
+                <input type="checkbox" checked={item.enabled} onChange={e => updateCustomItem(item.id, { enabled: e.target.checked })} />
+                <input style={styles.input} type="text" disabled={!item.enabled}
+                  value={item.label} onChange={e => updateCustomItem(item.id, { label: e.target.value })} placeholder="Nombre del ítem" />
+                <input style={styles.input} type="number" min="0" step="any" disabled={!item.enabled}
+                  value={item.amount} onChange={e => updateCustomItem(item.id, { amount: e.target.value })} placeholder="0" />
+                <button type="button" onClick={() => removeCustomItem(item.id)} title="Eliminar ítem"
+                  style={{ background: '#7f1d1d', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 8px', cursor: 'pointer', fontSize: 11 }}>
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div style={{ ...styles.formGrid, marginTop: 16 }}>
@@ -152,7 +254,7 @@ export default function SolQuote({
 
         <label style={{ ...styles.checkboxLabel, marginTop: 12 }}>
           <input type="checkbox" checked={showFob} onChange={event => setShowFob(event.target.checked)} />
-          Mostrar valor FOB al cliente
+          Mostrar valor FOB al cliente (si se destilda, tampoco se suma al total)
         </label>
 
         {proforma && (
@@ -228,7 +330,7 @@ export default function SolQuote({
                 <td style={styles.tdRight}>{format.format(quote.fob)}</td>
               </tr>}
               {quote.lines.map(line => (
-                <tr key={line.label}>
+                <tr key={line.key || line.label}>
                   <td style={styles.td}>{line.label}</td>
                   <td style={styles.tdCenter}>{line.detail}</td>
                   <td style={styles.tdRight}>{format.format(line.amount)}</td>
@@ -237,8 +339,10 @@ export default function SolQuote({
             </tbody>
             <tfoot>
               <tr style={styles.tfootRow}>
-                <td colSpan={2} style={styles.tdTotalLabel}>TOTAL ESTIMADO DE LA OPERACIÓN (USD):</td>
-                <td style={styles.tdTotalValue}>${format.format(quote.total)}</td>
+                <td colSpan={2} style={styles.tdTotalLabel}>
+                  {showFob ? 'TOTAL ESTIMADO DE LA OPERACIÓN (USD):' : 'TOTAL SERVICIO LOGÍSTICO E IMPUESTOS (USD):'}
+                </td>
+                <td style={styles.tdTotalValue}>${format.format(displayTotal)}</td>
               </tr>
               {exchangeRate > 0 && (
                 <tr style={{ background: '#f1f5f9', borderTop: '1px solid #cbd5e1' }}>
